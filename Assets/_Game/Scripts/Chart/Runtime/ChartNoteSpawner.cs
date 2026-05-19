@@ -4,6 +4,7 @@ using UnityEngine;
 public class ChartNoteSpawner : MonoBehaviour
 {
     [Header("Chart")]
+    [Tooltip("Tên file JSON chart. Nếu SelectedSongManager có bài đang chọn thì sẽ đọc từ đó thay thế.")]
     [SerializeField] private string chartFileName = "test_chart";
 
     [Header("Clock")]
@@ -16,6 +17,10 @@ public class ChartNoteSpawner : MonoBehaviour
     [Header("Gameplay — Required for movement")]
     [Tooltip("NoteManager is required. Notes will not move without it.")]
     [SerializeField] private NoteManager noteManager;
+
+    [Header("Editor Integration")]
+    [Tooltip("Preview Note Parent (world space). Sẽ tự động tắt khi runtime spawn bắt đầu để tránh chồng lên runtime notes.")]
+    [SerializeField] private GameObject previewNoteParentToDisable;
 
     [Header("Layout")]
     [SerializeField] private float laneSpacing = 160f;
@@ -39,13 +44,37 @@ public class ChartNoteSpawner : MonoBehaviour
 
     [SerializeField] private bool logSpawnedNotes = false;
 
+    [Header("Edit Mode")]
+    [Tooltip("Bật khi muốn chỉnh chart bằng tay (Load Preview → Play → kéo note → Save).\n" +
+             "Khi ON: không spawn runtime notes, không tắt Note Parent preview.\n" +
+             "Khi OFF: chế độ bình thường, Note Parent tự tắt, runtime notes spawn.")]
+    [SerializeField] private bool editMode = false;
+
     private List<ChartNoteSpawnData> _spawnDataList;
     private int _nextSpawnIndex;
     private bool _isReady;
     private int _laneCount = 4;
 
+    /// <summary>
+    /// Đồng bộ chartFileName với SongData được chọn từ Editor dropdown.
+    /// Gọi bởi ChartGeneratorToolEditor khi user đổi bài nhạc.
+    /// </summary>
+    public void SetChartFileName(string fileName)
+    {
+        chartFileName = fileName;
+    }
+
     private void Start()
     {
+        // ─── EDIT MODE: chỉ xem preview, không spawn runtime notes ───────────
+        if (editMode)
+        {
+            Debug.Log("ChartNoteSpawner: Edit Mode ON — runtime spawn disabled. " +
+                      "Note Parent giữ nguyên để editor kéo note.");
+            return;
+        }
+        // ────────────────────────────────────────────────────────────────
+
         if (noteManager == null)
         {
             Debug.LogError("ChartNoteSpawner: NoteManager is not assigned. " +
@@ -53,8 +82,40 @@ public class ChartNoteSpawner : MonoBehaviour
             return;
         }
 
+        // Tắt preview Note Parent để runtime notes không bị chồng lên preview notes.
+        if (previewNoteParentToDisable != null)
+        {
+            previewNoteParentToDisable.SetActive(false);
+            Debug.Log("ChartNoteSpawner: Preview Note Parent đã tắt để nhường chỗ cho runtime notes.");
+        }
+
+        // Ưu tiên lấy từ SelectedSongManager (bài đang chọn trong menu).
+        // Nếu không có (test trực tiếp trong scene) → dùng Inspector value.
+        string fileToLoad = chartFileName;
+
+        SongData selectedSong = SelectedSongManager.Instance != null
+            ? SelectedSongManager.Instance.SelectedSong
+            : null;
+
+        if (selectedSong != null)
+        {
+            string computedName = selectedSong.ComputedChartFileName;
+            if (!string.IsNullOrEmpty(computedName))
+            {
+                fileToLoad = computedName;
+                Debug.Log($"ChartNoteSpawner: Chart từ SelectedSongManager: '{fileToLoad}'");
+            }
+
+            // Đổi AudioClip sang nhạc của bài được chọn
+            if (playbackClock != null && selectedSong.audioClip != null)
+            {
+                playbackClock.SetClip(selectedSong.audioClip);
+                Debug.Log($"ChartNoteSpawner: Audio → '{selectedSong.audioClip.name}'");
+            }
+        }
+
         if (!ChartSpawnDataProvider.TryGetChartAndSpawnData(
-                chartFileName,
+                fileToLoad,
                 out ChartData loadedChart,
                 out _spawnDataList))
         {

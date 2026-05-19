@@ -12,7 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8c8f7d430bcc8bb4f986a97d225050e1, type: 3}
   m_Name: Song_02
   m_EditorClassIdentifier: 
-  _songTitle: Test Theme 1
+  _songTitle: infinity heaven
   _sceneName: GameplayScene
   _previewImage: {fileID: 21300000, guid: aabb89e92b67b0c468e347634b717e32, type: 3}
   _bpm: 0
+  _difficulty: Normal
+  audioClip: {fileID: 8300000, guid: 6e0809ac8561b41408d3140a91b91126, type: 3}

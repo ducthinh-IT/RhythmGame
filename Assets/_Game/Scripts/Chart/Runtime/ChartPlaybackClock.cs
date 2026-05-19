@@ -45,6 +45,15 @@ public class ChartPlaybackClock : MonoBehaviour
         audioOffset = offset;
     }
 
+    /// <summary>
+    /// Đổi AudioClip đang phát. Gọi trước Play().
+    /// ChartNoteSpawner gọi method này khi SelectedSongManager có bài đang chọn.
+    /// </summary>
+    public void SetClip(AudioClip clip)
+    {
+        if (audioSource == null || clip == null) return;
+        audioSource.clip = clip;
+    }
 
     private void Start()
     {

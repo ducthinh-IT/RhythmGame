@@ -12,6 +12,52 @@ public class ChartGeneratorTool : MonoBehaviour
     [Header("Preview Optional")]
     [SerializeField] private ChartVisualizer visualizer;
 
+    public void ApplySongData(SongData song)
+    {
+        if (song == null) return;
+
+        // --- Audio ---
+        if (musicSource != null && song.audioClip != null)
+            musicSource.clip = song.audioClip;
+
+        // --- Chart file name ---
+        if (!string.IsNullOrEmpty(song.ComputedChartFileName))
+            saveFileName = song.ComputedChartFileName;
+
+        // --- Kết nối BPM từ SongData → ChartGenerationSettings ---
+        // SongData._bpm là BPM chuẩn của bài nhạc (nhập tay hoặc từ Auto Detect).
+        // Nó sẽ pre-fill vào ChartGenerationSettings để không phải nhập lại.
+        // Vẫn có thể Override tay trong ChartGenerationSettings sau đó.
+        if (generationSettings != null && song._bpm > 0f)
+        {
+            generationSettings.bpm = song._bpm;
+        }
+
+        // --- Kết nối Difficulty từ SongData → ChartGenerationSettings ---
+        // SongData._difficulty ("Easy"/"Normal"/"Hard") map vào enum preset.
+        if (generationSettings != null && !string.IsNullOrEmpty(song._difficulty))
+        {
+            generationSettings.difficulty = ParseDifficulty(song._difficulty);
+        }
+
+        Debug.Log($"ChartGeneratorTool: Đã chọn '{song._songTitle}' " +
+                  $"| BPM={song._bpm} | Difficulty={song._difficulty} " +
+                  $"| Chart='{song.ComputedChartFileName}'");
+    }
+
+    /// <summary>
+    /// Chuyển chuỗi độ khó ("Easy"/"Normal"/"Hard") thành enum ChartDifficultyPreset.
+    /// </summary>
+    private ChartDifficultyPreset ParseDifficulty(string diff)
+    {
+        switch (diff.Trim().ToLower())
+        {
+            case "easy":   return ChartDifficultyPreset.Easy;
+            case "hard":   return ChartDifficultyPreset.Hard;
+            default:       return ChartDifficultyPreset.Normal;
+        }
+    }
+
     public void GenerateAndSave()
     {
         if (generationSettings == null)

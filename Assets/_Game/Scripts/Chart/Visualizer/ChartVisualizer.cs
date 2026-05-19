@@ -21,12 +21,18 @@ public class ChartVisualizer : MonoBehaviour
             return;
         }
 
+        int laneCount = chart.laneCount > 0 ? chart.laneCount : 4;
+
         for (int i = 0; i < chart.notes.Count; i++)
         {
             NoteData note = chart.notes[i];
 
+            // Căn giữa preview giống runtime: startX = -totalWidth/2
+            float totalWidth = (laneCount - 1) * laneSpacing;
+            float startX = -totalWidth / 2f;
+
             Vector3 position = new Vector3(
-                note.lane * laneSpacing,
+                startX + note.lane * laneSpacing,
                 note.time * timeSpacing,
                 0f
             );
@@ -56,27 +62,36 @@ public class ChartVisualizer : MonoBehaviour
             DestroyImmediate(noteParent.GetChild(i).gameObject);
         }
     }
+
     public void UpdateNoteFromPreview(ChartPreviewNote previewNote)
     {
         NoteData note = previewNote.NoteData;
 
-        int lane = Mathf.RoundToInt(previewNote.transform.position.x / laneSpacing);
+        // Tính lại lane từ vị trí đã căn giữa (giống công thức Draw)
+        int laneCount = currentChart != null && currentChart.laneCount > 0
+            ? currentChart.laneCount : 4;
+        float totalWidth = (laneCount - 1) * laneSpacing;
+        float startX = -totalWidth / 2f;
+
+        int lane = Mathf.RoundToInt((previewNote.transform.position.x - startX) / laneSpacing);
         float time = previewNote.transform.position.y / timeSpacing;
 
-        lane = Mathf.Clamp(lane, 0, 3);
+        lane = Mathf.Clamp(lane, 0, laneCount - 1);
         time = Mathf.Max(0f, time);
 
         note.lane = lane;
         note.time = time;
 
+        // Snap về đúng vị trí lane
         previewNote.transform.position = new Vector3(
-            note.lane * laneSpacing,
+            startX + note.lane * laneSpacing,
             note.time * timeSpacing,
             0f
         );
     }
+
     public ChartData GetCurrentChart()
     {
         return currentChart;
     }
-}
+}
