@@ -11,6 +11,9 @@ public class ChartVisualizer : MonoBehaviour
     [SerializeField] private float laneSpacing = 1.2f;
     [SerializeField] private float timeSpacing = 1f;
 
+    // Reference to settings to read BPM and Subdivision for snapping
+    public ChartGenerationSettings Settings { get; set; }
+
     public void Draw(ChartData chart)
     {
         Clear();
@@ -75,6 +78,17 @@ public class ChartVisualizer : MonoBehaviour
 
         int lane = Mathf.RoundToInt((previewNote.transform.position.x - startX) / laneSpacing);
         float time = previewNote.transform.position.y / timeSpacing;
+
+        // --- BEAT SNAPPING ---
+        if (Settings != null && Settings.bpm > 0 && Settings.subdivision > 0)
+        {
+            float secondsPerBeat = 60f / Settings.bpm;
+            float snapInterval = secondsPerBeat / Settings.subdivision;
+            
+            // Làm tròn time theo snapInterval
+            time = Mathf.Round(time / snapInterval) * snapInterval;
+        }
+        // ---------------------
 
         lane = Mathf.Clamp(lane, 0, laneCount - 1);
         time = Mathf.Max(0f, time);

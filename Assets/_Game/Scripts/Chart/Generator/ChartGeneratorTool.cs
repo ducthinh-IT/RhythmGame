@@ -83,8 +83,7 @@ public class ChartGeneratorTool : MonoBehaviour
             songLength,
             generationSettings.offset,
             generationSettings.laneCount,
-            generationSettings.subdivision,
-            generationSettings.noteChance
+            generationSettings.difficulty
         );
 
         ChartSaveLoad.Save(chart, saveFileName);
@@ -93,6 +92,7 @@ public class ChartGeneratorTool : MonoBehaviour
 
         if (visualizer != null)
         {
+            visualizer.Settings = generationSettings;
             visualizer.Draw(chart);
         }
     }
@@ -111,6 +111,7 @@ public class ChartGeneratorTool : MonoBehaviour
             return;
         }
 
+        visualizer.Settings = generationSettings;
         visualizer.Draw(loadedChart);
 
         Debug.Log($"Loaded preview chart: {loadedChart.songName} | Notes: {loadedChart.notes.Count}");

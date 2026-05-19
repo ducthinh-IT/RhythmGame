@@ -3,27 +3,13 @@ using UnityEngine;
 /// <summary>
 /// Tạo chart note dựa trên BPM và cấu hình độ khó.
 ///
-/// Cải tiến so với phiên bản trước:
-/// - Note được đặt có TRỌNG SỐ theo vị trí trong nhịp (4/4).
-/// - Beat 1 và beat 3 (downbeat) → ưu tiên cao nhất → luôn có note.
-/// - Beat 2 và beat 4 (weak beat) → ít hơn.
-/// - Off-beat (giữa các beat) → rất hiếm, chỉ xuất hiện ở Hard.
-///
-/// Kết quả: note cảm giác "đi theo nhịp nhạc" thay vì random bừa bãi.
+/// Cải tiến mới: Sử dụng Deterministic Pattern thay vì Random.
+/// - Easy: Cứ 2 nhịp đẻ 1 nốt (tỉ lệ nhỏ ra double).
+/// - Normal: Cứ mỗi nhịp đẻ 1 nốt, mỗi 4 nhịp ra double.
+/// - Hard: Pattern nhịp điệu (Double -> Single -> Offbeat -> Double...).
 /// </summary>
 public static class SimpleChartGenerator
 {
-    // Giả định nhịp 4/4 (4 beat per measure).
-    private const int BeatsPerMeasure = 4;
-
-    // Trọng số cho từng vị trí beat trong measure (4/4):
-    // Beat 1 (index 0): downbeat → mạnh nhất
-    // Beat 3 (index 2): mid-bar  → mạnh thứ hai
-    // Beat 2, 4 (index 1, 3): weak beats → nhẹ
-    private static readonly float[] BeatWeights = { 3.0f, 0.6f, 2.0f, 0.6f };
-
-    // Trọng số cho off-beat (subdivision giữa các beat) → rất nhỏ
-    private const float OffBeatWeight = 0.25f;
 
     public static ChartData Generate(
         string songName,
@@ -31,8 +17,7 @@ public static class SimpleChartGenerator
         float songLength,
         float offset,
         int laneCount,
-        int subdivision,
-        float noteChance)
+        ChartDifficultyPreset difficulty)
     {
         ChartData chart = new ChartData
         {
@@ -42,21 +27,20 @@ public static class SimpleChartGenerator
             laneCount = laneCount
         };
 
-        if (bpm <= 0f || songLength <= 0f || laneCount <= 0 || subdivision <= 0)
+        if (bpm <= 0f || songLength <= 0f || laneCount <= 0)
         {
             Debug.LogError("SimpleChartGenerator: Invalid chart generation settings.");
             return chart;
         }
 
-        float beatDuration    = 60f / bpm;
-        float stepDuration    = beatDuration / subdivision;
-        int stepsPerMeasure   = BeatsPerMeasure * subdivision;
+        float beatDuration = 60f / bpm;
+        // Mỗi step là nửa nhịp (1/2 beat - 8th notes) để hỗ trợ off-beat
+        float stepDuration = beatDuration / 2f; 
 
-        int previousLane      = -1;
+        int previousLane = -1;
         float previousNoteTime = -999f;
         float minSameLaneInterval = beatDuration;
 
-        // Dùng stepIndex để tránh lỗi float tích lũy
         int stepIndex = 0;
 
         while (true)
@@ -64,32 +48,67 @@ public static class SimpleChartGenerator
             float time = stepIndex * stepDuration;
             if (time >= songLength) break;
 
-            // --- Tính trọng số của vị trí này trong measure ---
-            int stepInMeasure = stepIndex % stepsPerMeasure;
-            float weight = GetStepWeight(stepInMeasure, subdivision);
+            bool shouldSpawn = false;
+            bool isDouble = false;
 
-            // Xác suất đặt note = noteChance × weight, giới hạn tối đa 1.0
-            float adjustedChance = Mathf.Min(1f, noteChance * weight);
-
-            if (Random.value <= adjustedChance)
+            switch (difficulty)
             {
-                int lane = PickLane(laneCount, previousLane, time,
-                                    previousNoteTime, minSameLaneInterval);
+                case ChartDifficultyPreset.Easy:
+                    // Easy: Cứ 2 nhịp đẻ 1 nốt (tương đương 4 steps)
+                    if (stepIndex % 4 == 0)
+                    {
+                        shouldSpawn = true;
+                        // 15% ra double note (theo yêu cầu)
+                        if (Random.value < 0.15f) isDouble = true; 
+                    }
+                    break;
 
-                NoteData note = new NoteData
-                {
-                    time           = time,
-                    lane           = lane,
-                    type           = NoteType.Tap,
-                    duration       = 0f,
-                    flickDirection = FlickDirection.Any,
-                    slidePath      = null
-                };
+                case ChartDifficultyPreset.Normal:
+                    // Normal: Mỗi 1 nhịp đẻ 1 nốt (2 steps)
+                    if (stepIndex % 2 == 0)
+                    {
+                        shouldSpawn = true;
+                        // Mỗi 4 nhịp (8 steps) ra double note
+                        if (stepIndex % 8 == 0) isDouble = true;
+                    }
+                    break;
 
-                chart.notes.Add(note);
+                case ChartDifficultyPreset.Hard:
+                    // Hard: 4-beat rhythm pattern (8 steps)
+                    int patternStep = stepIndex % 8;
+                    // Step 0: Double (Beat 1)
+                    // Step 2: Single (Beat 2)
+                    // Step 3: Single (Beat 2.5 - offbeat)
+                    // Step 4: Double (Beat 3)
+                    // Step 6: Single (Beat 4)
+                    // Step 7: Single (Beat 4.5 - offbeat)
+                    if (patternStep == 0 || patternStep == 4)
+                    {
+                        shouldSpawn = true;
+                        isDouble = true;
+                    }
+                    else if (patternStep == 2 || patternStep == 3 || patternStep == 6 || patternStep == 7)
+                    {
+                        shouldSpawn = true;
+                        isDouble = false;
+                    }
+                    break;
+            }
 
-                previousLane     = lane;
+            if (shouldSpawn)
+            {
+                int lane1 = PickLane(laneCount, previousLane, time, previousNoteTime, minSameLaneInterval);
+                AddNoteToChart(chart, time, lane1);
+
+                previousLane = lane1;
                 previousNoteTime = time;
+
+                if (isDouble && laneCount > 1)
+                {
+                    // Khoảng cách same-lane = 0 vì cùng xuất hiện 1 thời điểm
+                    int lane2 = PickLane(laneCount, previousLane, time, previousNoteTime, 0f);
+                    AddNoteToChart(chart, time, lane2);
+                }
             }
 
             stepIndex++;
@@ -98,31 +117,23 @@ public static class SimpleChartGenerator
         return chart;
     }
 
+    private static void AddNoteToChart(ChartData chart, float time, int lane)
+    {
+        NoteData note = new NoteData
+        {
+            time           = time,
+            lane           = lane,
+            type           = NoteType.Tap,
+            duration       = 0f,
+            flickDirection = FlickDirection.Any,
+            slidePath      = null
+        };
+        chart.notes.Add(note);
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Trả về trọng số của một step trong measure.
-    ///
-    /// Ví dụ subdivision=2 (8th notes), 4/4:
-    ///   step 0: beat 1 (downbeat) → weight 3.0
-    ///   step 1: off-beat          → weight 0.25
-    ///   step 2: beat 2 (weak)     → weight 0.6
-    ///   step 3: off-beat          → weight 0.25
-    ///   step 4: beat 3 (mid-bar)  → weight 2.0
-    ///   step 5: off-beat          → weight 0.25
-    ///   step 6: beat 4 (weak)     → weight 0.6
-    ///   step 7: off-beat          → weight 0.25
-    /// </summary>
-    private static float GetStepWeight(int stepInMeasure, int subdivision)
-    {
-        bool isOnBeat = (stepInMeasure % subdivision) == 0;
-
-        if (!isOnBeat)
-            return OffBeatWeight;
-
-        int beatInMeasure = (stepInMeasure / subdivision) % BeatsPerMeasure;
-        return BeatWeights[beatInMeasure];
-    }
+    // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private static int PickLane(
         int laneCount,

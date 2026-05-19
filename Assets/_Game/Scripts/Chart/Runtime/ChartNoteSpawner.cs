@@ -22,6 +22,9 @@ public class ChartNoteSpawner : MonoBehaviour
     [Tooltip("Preview Note Parent (world space). Sẽ tự động tắt khi runtime spawn bắt đầu để tránh chồng lên runtime notes.")]
     [SerializeField] private GameObject previewNoteParentToDisable;
 
+    [Header("Pool")]
+    [SerializeField] private int initialPoolSize = 50;
+
     [Header("Layout")]
     [SerializeField] private float laneSpacing = 160f;
 
@@ -38,9 +41,7 @@ public class ChartNoteSpawner : MonoBehaviour
     [Header("Timing")]
     [SerializeField] private float preSpawnTime = 2f;
 
-    [Header("Fallback / Debug")]
-    [Tooltip("Only used as fallback when spawned note does not have NoteBase/NoteMovement.")]
-    [SerializeField] private float spawnY = 3f;
+    [Header("Debug")]
 
     [SerializeField] private bool logSpawnedNotes = false;
 
@@ -88,6 +89,25 @@ public class ChartNoteSpawner : MonoBehaviour
             previewNoteParentToDisable.SetActive(false);
             Debug.Log("ChartNoteSpawner: Preview Note Parent đã tắt để nhường chỗ cho runtime notes.");
         }
+
+        // --- KHỞI TẠO OBJECT POOL ---
+        NotePool pool = NotePool.Instance;
+        if (pool == null)
+        {
+            GameObject poolObj = new GameObject("NotePool");
+            pool = poolObj.AddComponent<NotePool>();
+        }
+
+        NoteBase noteBasePrefab = notePrefab != null ? notePrefab.GetComponent<NoteBase>() : null;
+        if (noteBasePrefab != null)
+        {
+            pool.InitializePool(noteBasePrefab, noteParent, initialPoolSize, noteManager);
+        }
+        else
+        {
+            Debug.LogError("ChartNoteSpawner: notePrefab must have a NoteBase component for Object Pooling.");
+        }
+        // ------------------------------
 
         // Ưu tiên lấy từ SelectedSongManager (bài đang chọn trong menu).
         // Nếu không có (test trực tiếp trong scene) → dùng Inspector value.
@@ -194,15 +214,12 @@ public class ChartNoteSpawner : MonoBehaviour
             return;
         }
 
-        // Instantiate dưới noteParent (UI Canvas). Không set world position vì
-        // NoteMovement sẽ điều khiển anchoredPosition ngay sau Initialize().
-        GameObject noteObject = Instantiate(notePrefab, noteParent);
-        noteObject.name = $"Note_{data.noteId}_{data.noteType}_Lane{data.laneIndex}_Time{data.hitTime:F2}";
-
-        NoteBase noteBase = noteObject.GetComponent<NoteBase>();
-
+        NoteBase noteBase = NotePool.Instance.GetNote(Vector3.zero, Quaternion.identity);
+        
         if (noteBase != null)
         {
+            noteBase.name = $"Note_{data.noteId}_{data.noteType}_Lane{data.laneIndex}_Time{data.hitTime:F2}";
+
             NoteRuntimeData runtimeData = new NoteRuntimeData
             {
                 noteId         = data.noteId,
@@ -230,19 +247,7 @@ public class ChartNoteSpawner : MonoBehaviour
         }
         else
         {
-            // Fallback: prefab không có NoteBase — set anchoredPosition thủ công.
-            // Note sẽ không move theo NoteMovement system.
-            Debug.LogWarning($"ChartNoteSpawner: Note ID {data.noteId} prefab has no NoteBase. " +
-                             "Movement will not work. Using spawnY fallback.");
-
-            if (noteObject.TryGetComponent<RectTransform>(out RectTransform rt))
-            {
-                rt.anchoredPosition = new Vector2(GetCenteredLaneX(data.laneIndex), spawnY);
-            }
-            else
-            {
-                noteObject.transform.position = new Vector3(data.laneIndex * laneSpacing, spawnY, 0f);
-            }
+            Debug.LogError($"ChartNoteSpawner: NotePool returned null for note ID {data.noteId}.");
         }
     }
 
@@ -259,14 +264,24 @@ public class ChartNoteSpawner : MonoBehaviour
 
     private void ClearSpawnedNotes()
     {
-        if (noteParent == null)
-        {
-            return;
-        }
+        if (noteParent == null) return;
 
+        // Trả tất cả nốt đang active về Pool thay vì Destroy
         for (int i = noteParent.childCount - 1; i >= 0; i--)
         {
-            Destroy(noteParent.GetChild(i).gameObject);
+            Transform child = noteParent.GetChild(i);
+            if (child.gameObject.activeSelf)
+            {
+                NoteBase note = child.GetComponent<NoteBase>();
+                if (note != null && NotePool.Instance != null)
+                {
+                    NotePool.Instance.ReturnNote(note);
+                }
+                else
+                {
+                    Destroy(child.gameObject);
+                }
+            }
         }
     }
 }

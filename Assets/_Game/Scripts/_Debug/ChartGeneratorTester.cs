@@ -49,14 +49,17 @@ public class ChartGeneratorTester : MonoBehaviour
             subdivision = generationSettings.subdivision;
             noteChance = generationSettings.noteChance;
         }
+        ChartDifficultyPreset diff = generationSettings != null 
+            ? generationSettings.difficulty 
+            : ChartDifficultyPreset.Normal;
+
         generatedChart = SimpleChartGenerator.Generate(
             songName,
             bpm,
             songLength,
             offset,
             laneCount,
-            subdivision,
-            noteChance
+            diff
         );
 
         Debug.Log($"Generated chart: {generatedChart.songName}");

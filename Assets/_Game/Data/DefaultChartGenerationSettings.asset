@@ -12,10 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ce34307e099d11045b16c23e8e177bf2, type: 3}
   m_Name: DefaultChartGenerationSettings
   m_EditorClassIdentifier: 
-  difficulty: 1
-  bpm: 180
+  difficulty: 0
+  bpm: 160
   offset: 0
   laneCount: 4
-  subdivision: 2
-  noteChance: 0.5
-  minSameLaneIntervalBeat: 1
+  subdivision: 1
+  noteChance: 0.25
+  minSameLaneIntervalBeat: 1.5
