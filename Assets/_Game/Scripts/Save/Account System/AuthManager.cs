@@ -29,30 +29,41 @@ public class AuthManager : MonoBehaviour
     [Header("--- Global Message Text ---")]
     public TextMeshProUGUI messageText;
 
-    // ???ng d?n k?t n?i tr?c ti?p t?i c?ng HTTP th??ng, lo?i b? hoàn toàn l?i ng?t k?t n?i HTTPS
-    private string baseURL = "http://localhost:5231/api/auth/";
+    // ================= NGROK URL =================
+    private string baseURL = "https://rejoin-synopses-backfire.ngrok-free.dev/api/auth/";
 
+    // ================= START =================
     private void Start()
     {
         SwitchToLoginPanel();
     }
 
+    // ================= PANEL SWITCH =================
     public void SwitchToRegisterPanel()
     {
-        if (loginPanel != null) loginPanel.SetActive(false);
-        if (registerPanel != null) registerPanel.SetActive(true);
-        if (updatePanel != null) updatePanel.SetActive(false);
+        loginPanel.SetActive(false);
+        registerPanel.SetActive(true);
+        updatePanel.SetActive(false);
         ClearMessage();
     }
 
     public void SwitchToLoginPanel()
     {
-        if (loginPanel != null) loginPanel.SetActive(true);
-        if (registerPanel != null) registerPanel.SetActive(false);
-        if (updatePanel != null) updatePanel.SetActive(false);
+        loginPanel.SetActive(true);
+        registerPanel.SetActive(false);
+        updatePanel.SetActive(false);
         ClearMessage();
     }
 
+    public void SwitchToUpdatePanel()
+    {
+        loginPanel.SetActive(false);
+        registerPanel.SetActive(false);
+        updatePanel.SetActive(true);
+        ClearMessage();
+    }
+
+    // ================= REGISTER =================
     public void Register()
     {
         StartCoroutine(RegisterCoroutine());
@@ -62,7 +73,6 @@ public class AuthManager : MonoBehaviour
     {
         ShowNormal("Registering account...");
 
-        // Gán ?úng tên bi?n vi?t HOA ?? .NET Core nh?n d?ng ???c
         RegisterData data = new RegisterData
         {
             Username = registerUsername.text,
@@ -72,7 +82,8 @@ public class AuthManager : MonoBehaviour
 
         string json = JsonUtility.ToJson(data);
 
-        yield return StartCoroutine(PostRequest("register", json, (isSuccess, responseText) => {
+        yield return StartCoroutine(PostRequest("register", json, (isSuccess, responseText) =>
+        {
             if (isSuccess)
             {
                 ShowSuccess("Register successful!");
@@ -85,6 +96,7 @@ public class AuthManager : MonoBehaviour
         }));
     }
 
+    // ================= LOGIN =================
     public void Login()
     {
         StartCoroutine(LoginCoroutine());
@@ -102,13 +114,16 @@ public class AuthManager : MonoBehaviour
 
         string json = JsonUtility.ToJson(data);
 
-        yield return StartCoroutine(PostRequest("login", json, (isSuccess, responseText) => {
+        yield return StartCoroutine(PostRequest("login", json, (isSuccess, responseText) =>
+        {
             if (isSuccess)
             {
                 ShowSuccess("Login successful!");
+
                 PlayerPrefs.SetString("UserMode", "Member");
                 PlayerPrefs.SetString("CurrentUsername", loginUsername.text);
                 PlayerPrefs.Save();
+
                 Invoke("LoadGameplayScene", 1f);
             }
             else
@@ -118,23 +133,76 @@ public class AuthManager : MonoBehaviour
         }));
     }
 
+    // ================= UPDATE ACCOUNT =================
+    public void UpdateAccount()
+    {
+        StartCoroutine(UpdateCoroutine());
+    }
+
+    IEnumerator UpdateCoroutine()
+    {
+        ShowNormal("Updating account...");
+
+        UpdateData data = new UpdateData
+        {
+            Email = updateEmail.text,
+            NewUsername = updateNewUsername.text,
+            NewPassword = updateNewPassword.text
+        };
+
+        string json = JsonUtility.ToJson(data);
+
+        yield return StartCoroutine(PostRequest("update", json, (isSuccess, responseText) =>
+        {
+            if (isSuccess)
+            {
+                ShowSuccess("Account updated successfully!");
+            }
+            else
+            {
+                ShowError(responseText);
+            }
+        }));
+    }
+
+    // ================= QUICK PLAY =================
+    public void QuickPlay()
+    {
+        PlayerPrefs.SetString("UserMode", "Guest");
+        PlayerPrefs.SetString("CurrentUsername", "Guest");
+        PlayerPrefs.Save();
+
+        ShowSuccess("Entering as Guest...");
+        Invoke("LoadGameplayScene", 1f);
+    }
+
+    // ================= POST REQUEST (Bypass Ngrok Warning) =================
     IEnumerator PostRequest(string endpoint, string json, System.Action<bool, string> callback)
     {
         string fullURL = (baseURL + endpoint).Trim();
-
         UnityWebRequest request = new UnityWebRequest(fullURL, "POST");
+
         byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
         request.uploadHandler = new UploadHandlerRaw(bodyRaw);
         request.downloadHandler = new DownloadHandlerBuffer();
+
+        // C?u hình các Header b?t bu?c
         request.SetRequestHeader("Content-Type", "application/json");
+
+        // QUAN TR?NG: Thêm dòng này ?? b? qua màn hình c?nh báo ch?n k?t n?i c?a ngrok
+        request.SetRequestHeader("ngrok-skip-browser-warning", "true");
 
         yield return request.SendWebRequest();
 
-        if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
+        if (request.result == UnityWebRequest.Result.ConnectionError ||
+            request.result == UnityWebRequest.Result.ProtocolError)
         {
-            string errorResponse = (request.downloadHandler != null && !string.IsNullOrEmpty(request.downloadHandler.text))
+            string errorResponse = !string.IsNullOrEmpty(request.downloadHandler.text)
                 ? request.downloadHandler.text
-                : "Cannot connect to server! Error: " + request.error;
+                : request.error;
+
+            // In log l?i chi ti?t ra Console c?a Unity ?? d? debug
+            Debug.LogError($"[AuthManager] L?i k?t n?i ??n: {fullURL}\nChi ti?t: {errorResponse}");
 
             callback?.Invoke(false, errorResponse);
         }
@@ -144,14 +212,40 @@ public class AuthManager : MonoBehaviour
         }
     }
 
-    void ShowNormal(string msg) { messageText.text = msg; messageText.color = Color.white; }
-    void ShowSuccess(string msg) { messageText.text = msg; messageText.color = Color.green; }
-    void ShowError(string msg) { messageText.text = msg; messageText.color = Color.red; }
-    void ClearMessage() { messageText.text = ""; }
-    void LoadGameplayScene() { SceneManager.LoadScene("MainMenu"); }
+    // ================= MESSAGE UI =================
+    void ShowNormal(string msg)
+    {
+        messageText.text = msg;
+        messageText.color = Color.white;
+    }
+
+    void ShowSuccess(string msg)
+    {
+        messageText.text = msg;
+        messageText.color = Color.green;
+    }
+
+    void ShowError(string msg)
+    {
+        messageText.text = msg;
+        messageText.color = Color.red;
+    }
+
+    void ClearMessage()
+    {
+        messageText.text = "";
+    }
+
+    // ================= LOAD SCENE =================
+    void LoadGameplayScene()
+    {
+        // Hãy ch?c ch?n r?ng b?n ?ã thêm Scene mang tên "MainMenu" vào Build Settings c?a Unity
+        SceneManager.LoadScene("MainMenu");
+    }
 }
 
-// ================= CÁC L?P ??I T??NG DATA CHUY?N ??I JSON =================
+// ================= DTO DATA CLASSES =================
+
 [System.Serializable]
 public class RegisterData
 {
@@ -165,4 +259,12 @@ public class LoginData
 {
     public string Username;
     public string Password;
+}
+
+[System.Serializable]
+public class UpdateData
+{
+    public string Email;
+    public string NewUsername;
+    public string NewPassword;
 }
