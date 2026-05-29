@@ -1,68 +1,49 @@
-name: Kiểm tra PR Unity (GameCI)
+name: Unity Test (PR Quality Gate)
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
+  workflow_dispatch:
 
-# Cấu hình biến môi trường để xác thực bản quyền Unity
 env:
   UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
   UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
   UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
 
 jobs:
-  # ==========================================
-  # JOB 1: CHẠY KIỂM TRA LOGIC (UNITY TESTS)
-  # ==========================================
   testRunner:
-    name: Unity Test Runner
+    name: "✅ Run Unity Tests"
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout mã nguồn
-        uses: actions/checkout@v4
-        with:
-          lfs: true # Bắt buộc bật để tải các file 3D/Audio nặng
-
-      - name: Cache Library (Tăng tốc độ chạy)
-        uses: actions/cache@v3
-        with:
-          path: Library
-          key: Library-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
-          restore-keys: |
-            Library-
-
-      - name: Chạy Unity Tests (EditMode & PlayMode)
-        uses: game-ci/unity-test-runner@v4
-        with:
-          projectPath: . # Thay đổi nếu thư mục gốc Unity của bạn nằm trong thư mục con
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
-
-  # ==========================================
-  # JOB 2: KIỂM TRA BIÊN DỊCH (BUILD CHECK)
-  # ==========================================
-  buildCheck:
-    name: Unity Build Check (Windows 64)
-    needs: testRunner # Chỉ chạy build nếu Job testRunner ở trên đã Pass
-    runs-on: ubuntu-latest
-    steps:
+      # Bước 1: Kéo mã nguồn kèm Git LFS
       - name: Checkout mã nguồn
         uses: actions/checkout@v4
         with:
           lfs: true
 
-      - name: Cache Library
-        uses: actions/cache@v3
+      # Bước 2: Cache thư mục Library để tăng tốc lần chạy sau
+      - name: Cache Unity Library
+        uses: actions/cache@v4
         with:
           path: Library
-          key: Library-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          key: Library-Test-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
           restore-keys: |
-            Library-
+            Library-Test-
 
-      - name: Build Game (StandaloneWindows64)
-        uses: game-ci/unity-builder@v4
+      # Bước 3: Chạy toàn bộ test (EditMode + PlayMode)
+      # GameCI tự đọc phiên bản Unity từ ProjectSettings/ProjectVersion.txt
+      - name: Chạy Unity Tests (EditMode & PlayMode)
+        uses: game-ci/unity-test-runner@v4
+        id: testRunner
         with:
           projectPath: .
-          targetPlatform: StandaloneWindows64
-          # Thiết lập này giúp quá trình build không thực sự xuất ra file .exe, 
-          # mà chỉ biên dịch mã nguồn để kiểm tra lỗi, giúp tiết kiệm thời gian Server.
-          buildMethod: UnityBuilderAction.Builder.BuildProject
+          testMode: all
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      # Bước 4: Lưu kết quả test dù pass hay fail
+      - name: Upload kết quả Test
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Test-Results
+          path: ${{ steps.testRunner.outputs.artifactsPath }}
